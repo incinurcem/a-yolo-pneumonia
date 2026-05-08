@@ -19,7 +19,7 @@
 
 </div>
 
-## ✨ TL;DR
+## ✨ HIGHLIGHTS
 
 Standard MAE masks pixels **uniformly at random** — wasteful for medical imaging where information lives in central anatomical regions. **A-YOLO** masks the lungs more densely with a **Gaussian-weighted strategy**, forcing the ViT-Base backbone to reconstruct *clinically relevant* tissue. The same backbone simultaneously trains a YOLO-style detection head, yielding a single model that is both an SSL learner and a pneumonia localizer.
 
