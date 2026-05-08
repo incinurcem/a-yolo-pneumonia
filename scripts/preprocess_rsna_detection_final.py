@@ -1,0 +1,624 @@
+import os
+import json
+from typing import Any, Dict, List, Tuple
+
+import cv2
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+import pydicom
+
+
+# ============================================================
+# USER PATHS
+# ============================================================
+
+TRAIN_IMG_DIR = "/content/drive/MyDrive/Spring Semester/dataset/stage_2_train_images"
+TRAIN_LABELS_CSV = "/content/drive/MyDrive/Spring Semester/dataset/stage_2_train_labels.csv"
+CLASS_INFO_CSV = "/content/drive/MyDrive/Spring Semester/dataset/stage_2_detailed_class_info.csv"
+DATASET_DIR = "/content/drive/MyDrive/Spring Semester/deep learning project"
+TEST_IMG_DIR = "/content/drive/MyDrive/Spring Semester/dataset/stage_2_test_images"
+METADATA_CLEAN_CSV = "/content/drive/MyDrive/Spring Semester/dataset/metadata_clean.csv"
+SAMPLE_SUBMISSION_CSV = "/content/drive/MyDrive/Spring Semester/dataset/stage_2_sample_submission.csv"
+
+OUTPUT_ROOT = os.path.join(DATASET_DIR, "diffusion_guided_detr_data")
+
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+VAL_SIZE = 0.15
+RANDOM_STATE = 42
+CATEGORY_ID = 1
+CATEGORY_NAME = "pneumonia"
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def safe_float(x: Any, default: float = np.nan) -> float:
+    try:
+        if pd.isna(x):
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+
+def safe_int(x: Any, default: int = -1) -> int:
+    try:
+        if pd.isna(x):
+            return default
+        return int(x)
+    except Exception:
+        return default
+
+
+def load_csv_checked(path: str, name: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{name} not found: {path}")
+    df = pd.read_csv(path)
+    print(f"[OK] Loaded {name}: {path} | shape={df.shape}")
+    return df
+
+
+def get_dicom_path(image_dir: str, patient_id: str) -> str:
+    return os.path.join(image_dir, f"{patient_id}.dcm")
+
+
+def get_png_path(images_dir: str, patient_id: str) -> str:
+    return os.path.join(images_dir, f"{patient_id}.png")
+
+
+# ============================================================
+# DICOM -> PNG
+# ============================================================
+
+def read_dicom_and_convert_to_uint8(dicom_path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
+    ds = pydicom.dcmread(dicom_path)
+    image = ds.pixel_array.astype(np.float32)
+
+    slope = float(getattr(ds, "RescaleSlope", 1.0))
+    intercept = float(getattr(ds, "RescaleIntercept", 0.0))
+    image = image * slope + intercept
+
+    photometric = str(getattr(ds, "PhotometricInterpretation", ""))
+    if photometric == "MONOCHROME1":
+        image = image.max() - image
+
+    image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+    min_val = float(image.min())
+    max_val = float(image.max())
+
+    if max_val - min_val < 1e-6:
+        image_uint8 = np.zeros_like(image, dtype=np.uint8)
+    else:
+        image = (image - min_val) / (max_val - min_val)
+        image_uint8 = (image * 255.0).clip(0, 255).astype(np.uint8)
+
+    meta = {
+        "height": int(image_uint8.shape[0]),
+        "width": int(image_uint8.shape[1]),
+        "view_position": str(getattr(ds, "ViewPosition", "")),
+        "modality": str(getattr(ds, "Modality", "")),
+        "photometric_interpretation": photometric,
+        "pixel_spacing_row": np.nan,
+        "pixel_spacing_col": np.nan,
+    }
+
+    pixel_spacing = getattr(ds, "PixelSpacing", None)
+    if pixel_spacing is not None and len(pixel_spacing) >= 2:
+        meta["pixel_spacing_row"] = safe_float(pixel_spacing[0], np.nan)
+        meta["pixel_spacing_col"] = safe_float(pixel_spacing[1], np.nan)
+
+    return image_uint8, meta
+
+
+def save_png_if_needed(dicom_path: str, png_path: str) -> Dict[str, Any]:
+    if os.path.exists(png_path):
+        img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            raise RuntimeError(f"Failed to read existing PNG: {png_path}")
+        return {
+            "height": int(img.shape[0]),
+            "width": int(img.shape[1]),
+            "view_position": "",
+            "modality": "",
+            "photometric_interpretation": "",
+            "pixel_spacing_row": np.nan,
+            "pixel_spacing_col": np.nan,
+        }
+
+    image_uint8, meta = read_dicom_and_convert_to_uint8(dicom_path)
+    ok = cv2.imwrite(png_path, image_uint8)
+    if not ok:
+        raise RuntimeError(f"Failed to save PNG: {png_path}")
+    return meta
+
+
+# ============================================================
+# BBOX HELPERS
+# ============================================================
+
+def clean_and_validate_box(
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    img_w: int,
+    img_h: int
+) -> Tuple[bool, List[float], Dict[str, Any]]:
+    flags = {
+        "was_clipped": False,
+        "invalid_reason": ""
+    }
+
+    if np.isnan(x) or np.isnan(y) or np.isnan(w) or np.isnan(h):
+        flags["invalid_reason"] = "nan_box"
+        return False, [], flags
+
+    if w <= 0 or h <= 0:
+        flags["invalid_reason"] = "non_positive_wh"
+        return False, [], flags
+
+    if img_w <= 0 or img_h <= 0:
+        return True, [float(x), float(y), float(w), float(h)], flags
+
+    x1 = max(0.0, x)
+    y1 = max(0.0, y)
+    x2 = min(float(img_w), x + w)
+    y2 = min(float(img_h), y + h)
+
+    new_w = x2 - x1
+    new_h = y2 - y1
+
+    if new_w <= 1 or new_h <= 1:
+        flags["invalid_reason"] = "outside_or_too_small_after_clip"
+        return False, [], flags
+
+    if x1 != x or y1 != y or new_w != w or new_h != h:
+        flags["was_clipped"] = True
+
+    return True, [float(x1), float(y1), float(new_w), float(new_h)], flags
+
+
+def extract_valid_boxes(
+    group: pd.DataFrame,
+    img_w: int,
+    img_h: int
+) -> Tuple[List[List[float]], int]:
+    boxes = []
+    clipped_count = 0
+
+    for _, row in group.iterrows():
+        target = safe_int(row.get("Target", 0), 0)
+        if target != 1:
+            continue
+
+        x = safe_float(row.get("x", np.nan))
+        y = safe_float(row.get("y", np.nan))
+        w = safe_float(row.get("width", np.nan))
+        h = safe_float(row.get("height", np.nan))
+
+        is_valid, cleaned_box, flags = clean_and_validate_box(x, y, w, h, img_w, img_h)
+        if is_valid:
+            boxes.append(cleaned_box)
+            if flags["was_clipped"]:
+                clipped_count += 1
+
+    return boxes, clipped_count
+
+
+# ============================================================
+# TRAIN AGGREGATION
+# ============================================================
+
+def aggregate_train_records(
+    labels_df: pd.DataFrame,
+    class_info_df: pd.DataFrame,
+    train_img_dir: str,
+    images_dir: str
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    required_label_cols = {"patientId", "Target", "x", "y", "width", "height"}
+    required_class_cols = {"patientId", "class"}
+
+    missing_label_cols = required_label_cols - set(labels_df.columns)
+    missing_class_cols = required_class_cols - set(class_info_df.columns)
+
+    if missing_label_cols:
+        raise ValueError(f"TRAIN_LABELS_CSV missing columns: {missing_label_cols}")
+    if missing_class_cols:
+        raise ValueError(f"CLASS_INFO_CSV missing columns: {missing_class_cols}")
+
+    merged = labels_df.merge(
+        class_info_df[["patientId", "class"]],
+        on="patientId",
+        how="left"
+    )
+
+    grouped = merged.groupby("patientId", sort=True)
+
+    records = []
+    missing_files = []
+
+    for patient_id, group in tqdm(grouped, total=len(grouped), desc="Aggregating train records"):
+        dicom_path = get_dicom_path(train_img_dir, patient_id)
+        image_path = get_png_path(images_dir, patient_id)
+        dicom_exists = os.path.exists(dicom_path)
+
+        if not dicom_exists:
+            missing_files.append({
+                "patientId": patient_id,
+                "split": "train",
+                "expected_path": dicom_path
+            })
+            continue
+
+        try:
+            img_meta = save_png_if_needed(dicom_path, image_path)
+        except Exception as e:
+            missing_files.append({
+                "patientId": patient_id,
+                "split": "train",
+                "expected_path": dicom_path,
+                "error": str(e)
+            })
+            continue
+
+        img_h = img_meta["height"]
+        img_w = img_meta["width"]
+
+        boxes, clipped_count = extract_valid_boxes(group, img_w=img_w, img_h=img_h)
+        target = 1 if len(boxes) > 0 else 0
+
+        class_values = group["class"].dropna().unique().tolist()
+        class_name = class_values[0] if len(class_values) > 0 else "Unknown"
+
+        records.append({
+            "patientId": patient_id,
+            "split": "train",
+            "dicom_path": dicom_path,
+            "image_path": image_path,
+            "image_name": os.path.basename(image_path),
+            "dicom_exists": 1,
+            "dicom_ok": 1,
+            "height": int(img_h),
+            "width": int(img_w),
+            "view_position": img_meta["view_position"],
+            "modality": img_meta["modality"],
+            "photometric_interpretation": img_meta["photometric_interpretation"],
+            "pixel_spacing_row": img_meta["pixel_spacing_row"],
+            "pixel_spacing_col": img_meta["pixel_spacing_col"],
+            "target": int(target),
+            "num_boxes": int(len(boxes)),
+            "num_clipped_boxes": int(clipped_count),
+            "boxes_xywh": json.dumps(boxes),
+            "class_name": class_name
+        })
+
+    master_df = pd.DataFrame(records)
+    missing_files_df = pd.DataFrame(missing_files)
+    return master_df, missing_files_df
+
+
+# ============================================================
+# TEST AGGREGATION
+# ============================================================
+
+def build_test_records(
+    test_img_dir: str,
+    sample_submission_csv: str,
+    images_dir: str
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    sample_df = load_csv_checked(sample_submission_csv, "SAMPLE_SUBMISSION_CSV")
+
+    if "patientId" not in sample_df.columns:
+        raise ValueError("SAMPLE_SUBMISSION_CSV must contain column 'patientId'")
+
+    records = []
+    missing_files = []
+
+    for patient_id in tqdm(sample_df["patientId"].tolist(), desc="Building test records"):
+        dicom_path = get_dicom_path(test_img_dir, patient_id)
+        image_path = get_png_path(images_dir, patient_id)
+        dicom_exists = os.path.exists(dicom_path)
+
+        if not dicom_exists:
+            missing_files.append({
+                "patientId": patient_id,
+                "split": "test",
+                "expected_path": dicom_path
+            })
+            continue
+
+        try:
+            img_meta = save_png_if_needed(dicom_path, image_path)
+        except Exception as e:
+            missing_files.append({
+                "patientId": patient_id,
+                "split": "test",
+                "expected_path": dicom_path,
+                "error": str(e)
+            })
+            continue
+
+        records.append({
+            "patientId": patient_id,
+            "split": "test",
+            "dicom_path": dicom_path,
+            "image_path": image_path,
+            "image_name": os.path.basename(image_path),
+            "dicom_exists": 1,
+            "dicom_ok": 1,
+            "height": int(img_meta["height"]),
+            "width": int(img_meta["width"]),
+            "view_position": img_meta["view_position"],
+            "modality": img_meta["modality"],
+            "photometric_interpretation": img_meta["photometric_interpretation"],
+            "pixel_spacing_row": img_meta["pixel_spacing_row"],
+            "pixel_spacing_col": img_meta["pixel_spacing_col"],
+            "target": -1,
+            "num_boxes": 0,
+            "num_clipped_boxes": 0,
+            "boxes_xywh": json.dumps([]),
+            "class_name": "test"
+        })
+
+    test_df = pd.DataFrame(records)
+    missing_files_df = pd.DataFrame(missing_files)
+    return test_df, missing_files_df
+
+
+# ============================================================
+# SPLIT
+# ============================================================
+
+def split_master_df(
+    master_df: pd.DataFrame,
+    val_size: float = 0.15,
+    random_state: int = 42
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    if "target" not in master_df.columns:
+        raise ValueError("master_df must contain 'target'")
+
+    train_df, val_df = train_test_split(
+        master_df,
+        test_size=val_size,
+        random_state=random_state,
+        stratify=master_df["target"]
+    )
+
+    return train_df.reset_index(drop=True), val_df.reset_index(drop=True)
+
+
+# ============================================================
+# COCO CONVERSION
+# ============================================================
+
+def build_coco_json(
+    split_df: pd.DataFrame,
+    output_json_path: str,
+    category_id: int = 1,
+    category_name: str = "pneumonia"
+) -> Dict[str, Any]:
+    images = []
+    annotations = []
+    categories = [{"id": category_id, "name": category_name}]
+    ann_id = 1
+
+    for image_id, row in enumerate(split_df.itertuples(index=False), start=1):
+        patient_id = row.patientId
+        image_path = row.image_path
+        boxes = json.loads(row.boxes_xywh)
+
+        images.append({
+            "id": image_id,
+            "file_name": image_path,
+            "patientId": patient_id,
+            "width": int(row.width),
+            "height": int(row.height)
+        })
+
+        for box in boxes:
+            x, y, w, h = box
+            annotations.append({
+                "id": ann_id,
+                "image_id": image_id,
+                "category_id": category_id,
+                "bbox": [float(x), float(y), float(w), float(h)],
+                "area": float(w * h),
+                "iscrowd": 0
+            })
+            ann_id += 1
+
+    coco = {
+        "images": images,
+        "annotations": annotations,
+        "categories": categories
+    }
+
+    with open(output_json_path, "w", encoding="utf-8") as f:
+        json.dump(coco, f, indent=2)
+
+    return coco
+
+
+# ============================================================
+# SUMMARY
+# ============================================================
+
+def summarize_split(df: pd.DataFrame, name: str) -> Dict[str, Any]:
+    summary = {
+        "name": name,
+        "num_images": int(len(df)),
+    }
+
+    if "target" in df.columns:
+        valid_targets = df[df["target"] >= 0]
+        if len(valid_targets) > 0:
+            summary["num_positive_images"] = int((valid_targets["target"] == 1).sum())
+            summary["num_negative_images"] = int((valid_targets["target"] == 0).sum())
+            summary["positive_ratio"] = float((valid_targets["target"] == 1).mean())
+        summary["num_total_boxes"] = int(df["num_boxes"].sum())
+
+    if "dicom_exists" in df.columns:
+        summary["num_missing_dicom"] = int((df["dicom_exists"] == 0).sum())
+
+    if "dicom_ok" in df.columns:
+        summary["num_corrupted_or_unreadable_dicom"] = int((df["dicom_ok"] == 0).sum())
+
+    return summary
+
+
+def save_summary(summary_dict: Dict[str, Any], output_path: str) -> None:
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(summary_dict, f, indent=2)
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+    images_dir = os.path.join(OUTPUT_ROOT, "images")
+    metadata_dir = os.path.join(OUTPUT_ROOT, "metadata")
+    ann_dir = os.path.join(OUTPUT_ROOT, "annotations")
+    reports_dir = os.path.join(OUTPUT_ROOT, "reports")
+
+    ensure_dir(OUTPUT_ROOT)
+    ensure_dir(images_dir)
+    ensure_dir(metadata_dir)
+    ensure_dir(ann_dir)
+    ensure_dir(reports_dir)
+
+    labels_df = load_csv_checked(TRAIN_LABELS_CSV, "TRAIN_LABELS_CSV")
+    class_info_df = load_csv_checked(CLASS_INFO_CSV, "CLASS_INFO_CSV")
+
+    if os.path.exists(METADATA_CLEAN_CSV):
+        metadata_clean_df = load_csv_checked(METADATA_CLEAN_CSV, "METADATA_CLEAN_CSV")
+        print(f"[INFO] metadata_clean.csv available: shape={metadata_clean_df.shape}")
+    else:
+        print("[WARN] METADATA_CLEAN_CSV not found. Continuing without it.")
+
+    all_train_master_df, missing_train_df = aggregate_train_records(
+        labels_df=labels_df,
+        class_info_df=class_info_df,
+        train_img_dir=TRAIN_IMG_DIR,
+        images_dir=images_dir
+    )
+
+    test_master_df, missing_test_df = build_test_records(
+        test_img_dir=TEST_IMG_DIR,
+        sample_submission_csv=SAMPLE_SUBMISSION_CSV,
+        images_dir=images_dir
+    )
+
+    train_df, val_df = split_master_df(
+        master_df=all_train_master_df,
+        val_size=VAL_SIZE,
+        random_state=RANDOM_STATE
+    )
+
+    all_train_master_csv = os.path.join(metadata_dir, "all_train_master.csv")
+    train_master_csv = os.path.join(metadata_dir, "train_master.csv")
+    val_master_csv = os.path.join(metadata_dir, "val_master.csv")
+    test_master_csv = os.path.join(metadata_dir, "test_master.csv")
+
+    all_train_master_df.to_csv(all_train_master_csv, index=False)
+    train_df.to_csv(train_master_csv, index=False)
+    val_df.to_csv(val_master_csv, index=False)
+    test_master_df.to_csv(test_master_csv, index=False)
+
+    train_csv = os.path.join(OUTPUT_ROOT, "train.csv")
+    val_csv = os.path.join(OUTPUT_ROOT, "val.csv")
+    test_csv = os.path.join(OUTPUT_ROOT, "test.csv")
+
+    train_df.to_csv(train_csv, index=False)
+    val_df.to_csv(val_csv, index=False)
+    test_master_df.to_csv(test_csv, index=False)
+
+    train_positive_only_csv = os.path.join(metadata_dir, "train_positive_only.csv")
+    val_positive_only_csv = os.path.join(metadata_dir, "val_positive_only.csv")
+    train_df[train_df["target"] == 1].to_csv(train_positive_only_csv, index=False)
+    val_df[val_df["target"] == 1].to_csv(val_positive_only_csv, index=False)
+
+    missing_files_df = pd.concat([missing_train_df, missing_test_df], ignore_index=True)
+    missing_files_csv = os.path.join(reports_dir, "missing_files.csv")
+    missing_files_df.to_csv(missing_files_csv, index=False)
+
+    train_coco_json = os.path.join(ann_dir, "train_coco.json")
+    val_coco_json = os.path.join(ann_dir, "val_coco.json")
+
+    train_coco = build_coco_json(
+        split_df=train_df,
+        output_json_path=train_coco_json,
+        category_id=CATEGORY_ID,
+        category_name=CATEGORY_NAME
+    )
+
+    val_coco = build_coco_json(
+        split_df=val_df,
+        output_json_path=val_coco_json,
+        category_id=CATEGORY_ID,
+        category_name=CATEGORY_NAME
+    )
+
+    summary = {
+        "output_paths": {
+            "OUTPUT_ROOT": OUTPUT_ROOT,
+            "images_dir": images_dir,
+            "train_csv": train_csv,
+            "val_csv": val_csv,
+            "test_csv": test_csv,
+            "train_master_csv": train_master_csv,
+            "val_master_csv": val_master_csv,
+            "test_master_csv": test_master_csv,
+            "train_coco_json": train_coco_json,
+            "val_coco_json": val_coco_json,
+            "missing_files_csv": missing_files_csv
+        },
+        "dataset_summary": {
+            "all_train": summarize_split(all_train_master_df, "all_train"),
+            "train": summarize_split(train_df, "train"),
+            "val": summarize_split(val_df, "val"),
+            "test": summarize_split(test_master_df, "test")
+        },
+        "annotation_summary": {
+            "train_num_images": len(train_coco["images"]),
+            "train_num_annotations": len(train_coco["annotations"]),
+            "val_num_images": len(val_coco["images"]),
+            "val_num_annotations": len(val_coco["annotations"])
+        },
+        "missing_files_count": int(len(missing_files_df))
+    }
+
+    summary_json = os.path.join(reports_dir, "summary.json")
+    save_summary(summary, summary_json)
+
+    print("\n" + "=" * 90)
+    print("[DONE] RSNA detection preprocessing completed.")
+    print(f"[INFO] Output root     : {OUTPUT_ROOT}")
+    print(f"[INFO] Images dir      : {images_dir}")
+    print(f"[INFO] Train CSV       : {train_csv}")
+    print(f"[INFO] Val CSV         : {val_csv}")
+    print(f"[INFO] Test CSV        : {test_csv}")
+    print(f"[INFO] Train master    : {train_master_csv}")
+    print(f"[INFO] Val master      : {val_master_csv}")
+    print(f"[INFO] Test master     : {test_master_csv}")
+    print(f"[INFO] Train COCO      : {train_coco_json}")
+    print(f"[INFO] Val COCO        : {val_coco_json}")
+    print(f"[INFO] Missing files   : {missing_files_csv}")
+    print(f"[INFO] Summary JSON    : {summary_json}")
+    print("=" * 90)
+
+
+if __name__ == "__main__":
+    main()
