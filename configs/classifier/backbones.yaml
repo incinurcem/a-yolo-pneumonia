@@ -1,0 +1,76 @@
+# Backbone variants: resnet50, efficientnet_b0
+#s
+backbones:
+  resnet18:
+    name: "resnet18"
+    family: "resnet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.30
+    feature_dim: 512
+    freeze_until: null
+
+  resnet34:
+    name: "resnet34"
+    family: "resnet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.30
+    feature_dim: 512
+    freeze_until: null
+
+  resnet50:
+    name: "resnet50"
+    family: "resnet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.35
+    feature_dim: 2048
+    freeze_until: "layer2"
+
+  efficientnet_b0:
+    name: "efficientnet_b0"
+    family: "efficientnet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.30
+    feature_dim: 1280
+    freeze_until: null
+
+  efficientnet_b3:
+    name: "efficientnet_b3"
+    family: "efficientnet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.35
+    feature_dim: 1536
+    freeze_until: null
+
+  densenet121:
+    name: "densenet121"
+    family: "densenet"
+    pretrained: true
+    in_channels: 1
+    num_classes: 2
+    image_size: 512
+    dropout: 0.25
+    feature_dim: 1024
+    freeze_until: null
+
+defaults:
+  selected_backbone: "resnet50"
+  use_timm: true
+  convert_rgb_to_grayscale_weights: true
+  use_classification_head_bn: true
+  pooling: "gem"
+  label_smoothing: 0.02

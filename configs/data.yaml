@@ -1,0 +1,40 @@
+#s
+dataset:
+  name: "rsna_pneumonia"
+  root_dir: "data/raw/rsna"
+  image_root: "data/interim/png_512"
+  train_dicom_root: "data/raw/rsna/stage_2_train_images"
+  test_dicom_root: "data/raw/rsna/stage_2_test_images"
+  label_csv: "data/raw/rsna/stage_2_train_labels.csv"
+  class_info_csv: "data/raw/rsna/stage_2_detailed_class_info.csv"
+  submission_csv: "data/raw/rsna/stage_2_sample_submission.csv"
+  metadata_csv: "data/raw/rsna/metadata_clean.csv"
+
+splits:
+  train_csv: "data/splits/classification_train.csv"
+  val_csv: "data/splits/classification_val.csv"
+  test_csv: "data/splits/classification_test.csv"
+  split_level: "patient"
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+image:
+  format: "png"
+  channels: 1
+  image_size: 512
+  dicom_windowing: false
+  apply_clahe: true
+  dtype: "float32"
+
+labels:
+  normal_label: 0
+  pneumonia_label: 1
+
+bbox:
+  use_bbox_if_available: true
+  x_column: "x"
+  y_column: "y"
+  width_column: "width"
+  height_column: "height"
+  target_column: "Target"

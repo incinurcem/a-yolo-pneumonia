@@ -1,0 +1,30 @@
+#s
+project:
+  name: "dl_project"
+  task: "classifier_gan_gradcam_deployment"
+  dataset: "RSNA Pneumonia Detection Challenge"
+  seed: 42
+
+system:
+  device: "auto"
+  num_workers: 8
+  cudnn_benchmark: true
+  deterministic: false
+  mixed_precision: true
+
+logging:
+  level: "INFO"
+  log_dir: "outputs/logs"
+  tensorboard_dir: "outputs/tensorboard"
+  save_json_logs: true
+
+reproducibility:
+  seed_python: 42
+  seed_numpy: 42
+  seed_torch: 42
+  seed_cuda: 42
+
+reporting:
+  export_plots: true
+  export_tables: true
+  export_summary_json: true

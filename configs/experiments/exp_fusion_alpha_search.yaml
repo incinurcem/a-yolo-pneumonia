@@ -1,0 +1,48 @@
+# Experiment: validation-based alpha optimization
+#s
+experiment:
+  name: "fusion_alpha_search"
+  type: "fusion"
+  description: "Classifier olasılığı ile GAN anomaly score birleşimi için alpha taraması"
+
+inputs:
+  classifier_predictions_csv: "outputs/predictions/classifier/resnet50/val_predictions.csv"
+  gan_predictions_csv: "outputs/predictions/gan/val_gan_scores.csv"
+  ground_truth_csv: "data/splits/classification_val.csv"
+
+search:
+  alpha_values:
+    - 0.00
+    - 0.10
+    - 0.20
+    - 0.30
+    - 0.40
+    - 0.50
+    - 0.60
+    - 0.70
+    - 0.80
+    - 0.90
+    - 1.00
+  beta_values:
+    - 1.0
+  threshold_values:
+    - 0.30
+    - 0.35
+    - 0.40
+    - 0.45
+    - 0.50
+    - 0.55
+    - 0.60
+
+selection_metric: "auc"
+secondary_metrics:
+  - "f1"
+  - "recall"
+  - "precision"
+  - "pr_auc"
+
+output:
+  save_full_table: true
+  save_best_only: true
+  results_csv: "outputs/experiments/fusion_alpha_search/results.csv"
+  best_yaml: "outputs/experiments/fusion_alpha_search/best_fusion.yaml"

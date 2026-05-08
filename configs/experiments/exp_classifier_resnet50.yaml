@@ -1,0 +1,45 @@
+# Experiment: baseline classifier using ResNet50
+experiment:
+  name: "classifier_resnet50"
+  type: "classification"
+  description: "ResNet50 backbone ile RSNA pneumonia binary classification"
+
+inherit:
+  - "configs/base.yaml"
+  - "configs/data.yaml"
+  - "configs/paths.yaml"
+  - "configs/classifier/train.yaml"
+  - "configs/classifier/backbones.yaml"
+
+model:
+  backbone_key: "resnet50"
+  num_classes: 1
+  dropout: 0.35
+  freeze_until: "layer2"
+
+training:
+  batch_size: 32
+  epochs: 30
+  lr: 0.0001
+  weight_decay: 0.0001
+  optimizer: "adamw"
+  amp: true
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 3
+  min_lr: 0.000001
+
+loss:
+  name: "bce_with_logits"
+  label_smoothing: 0.02
+
+evaluation:
+  threshold: 0.50
+  tta: true
+  tta_num: 5
+
+output:
+  run_name: "exp_classifier_resnet50"
+  checkpoint_dir: "outputs/checkpoints/classifier/resnet50"
+  prediction_dir: "outputs/predictions/classifier/resnet50"

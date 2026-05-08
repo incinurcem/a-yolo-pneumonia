@@ -1,0 +1,39 @@
+# Global and patch-level anomaly threshold settings
+#s
+thresholds:
+  anomaly_score:
+    default: 0.35
+    search_on_validation: true
+    candidate_values:
+      - 0.10
+      - 0.15
+      - 0.20
+      - 0.25
+      - 0.30
+      - 0.35
+      - 0.40
+      - 0.45
+      - 0.50
+
+  pixel_map:
+    default: 0.40
+    candidate_values:
+      - 0.20
+      - 0.25
+      - 0.30
+      - 0.35
+      - 0.40
+      - 0.45
+      - 0.50
+      - 0.55
+      - 0.60
+
+selection_metric:
+  primary: "hit_rate"
+  secondary:
+    - "iou_proxy"
+    - "auc"
+
+bbox_proxy:
+  enabled: true
+  min_overlap_pixels: 32

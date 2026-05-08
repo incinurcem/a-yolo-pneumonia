@@ -1,0 +1,41 @@
+# Target layer and overlay parameters
+#s
+gradcam:
+  enabled: true
+  method: "gradcam"
+
+target:
+  model_type: "classifier"
+  target_class_index: 1
+  class_name: "pneumonia"
+
+layers:
+  resnet50:
+    target_layers:
+      - "layer4.2.conv3"
+  efficientnet_b0:
+    target_layers:
+      - "conv_head"
+  densenet121:
+    target_layers:
+      - "features.denseblock4.denselayer16.conv2"
+
+processing:
+  apply_relu: true
+  normalize: true
+  resize_to_input: true
+  colormap: "jet"
+  overlay_alpha: 0.40
+
+saving:
+  save_raw_cam: true
+  save_overlay: true
+  save_grayscale_cam: true
+  output_dir: "artifacts/xai/gradcam"
+
+evaluation:
+  compare_with_bbox: true
+  metrics:
+    - "pointing_game"
+    - "inside_bbox_ratio"
+    - "energy_inside_bbox"

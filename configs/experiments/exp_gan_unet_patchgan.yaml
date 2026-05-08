@@ -1,0 +1,41 @@
+# Experiment: U-Net generator + PatchGAN discriminator
+#s
+experiment:
+  name: "gan_unet_patchgan"
+  type: "gan"
+  description: "U-Net generator + PatchGAN discriminator ile anomaly localization"
+
+inherit:
+  - "configs/base.yaml"
+  - "configs/data.yaml"
+  - "configs/paths.yaml"
+  - "configs/gan/model.yaml"
+  - "configs/gan/train.yaml"
+  - "configs/gan/thresholds.yaml"
+
+model:
+  generator: "unet_generator"
+  discriminator: "patchgan"
+  in_channels: 1
+  out_channels: 1
+  ngf: 64
+  ndf: 64
+
+training:
+  epochs: 80
+  batch_size: 16
+  lr_g: 0.0002
+  lr_d: 0.0002
+  lambda_l1: 100.0
+  lambda_adv: 1.0
+  amp: true
+
+dataset:
+  train_csv: "data/splits/gan_train_normal_only.csv"
+  val_csv: "data/splits/gan_val_mixed.csv"
+  image_root: "data/images_png"
+
+output:
+  checkpoint_dir: "outputs/checkpoints/gan"
+  samples_dir: "outputs/samples/gan"
+  metrics_dir: "outputs/metrics/gan"

@@ -1,0 +1,38 @@
+# Alpha search space and final score settings
+#s
+fusion:
+  name: "classifier_plus_gan_risk_fusion"
+  enabled: true
+  formula:
+    type: "weighted_sum"
+    alpha_classifier: 0.60
+    alpha_anomaly: 0.40
+    beta: 1.0
+    clip_min: 0.0
+    clip_max: 1.0
+
+
+inputs:
+  classifier_score_key: "p_pneumonia"
+  anomaly_score_key: "gan_anomaly_score"
+
+
+decision:
+  final_threshold: 0.50
+  low_risk_max: 0.30
+  medium_risk_max: 0.60
+
+maps:
+  produce_fused_heatmap: true
+  normalize_before_fusion: true
+  heatmap_resize: 512
+  gaussian_smoothing_sigma: 1.5
+
+calibration:
+  enabled: true
+  method: "temperature_scaling"
+
+outputs:
+  save_fused_score: true
+  save_fused_heatmap: true
+  save_overlay: true

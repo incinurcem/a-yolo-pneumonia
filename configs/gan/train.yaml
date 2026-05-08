@@ -1,0 +1,58 @@
+# GAN training hyperparameters and loss weights
+#s
+dataset:
+  train_csv: "data/splits/gan_train_normal_only.csv"
+  val_csv: "data/splits/gan_val_mixed.csv"
+  test_csv: "data/splits/gan_test_mixed.csv"
+  image_root: "data/images_png"
+  image_size: 512
+  channels: 1
+
+loader:
+  batch_size: 16
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
+
+preprocessing:
+  normalize_to_minus1_1: true
+  apply_clahe: true
+
+augmentations:
+  horizontal_flip: 0.50
+  shift_scale_rotate: 0.30
+  brightness_contrast: 0.20
+  blur: 0.10
+
+training:
+  epochs: 80
+  optimizer: "adam"
+  betas: [0.5, 0.999]
+  lr_g: 0.0002
+  lr_d: 0.0002
+  amp: true
+  gradient_clip_norm: 1.0
+
+loss:
+  adversarial: "bce"
+  lambda_adv: 1.0
+  lambda_l1: 100.0
+  lambda_ssim: 5.0
+  use_feature_matching: false
+
+validation:
+  save_reconstructions: true
+  save_anomaly_maps: true
+  metrics:
+    - "recon_l1"
+    - "recon_ssim"
+    - "anomaly_auc"
+    - "hit_rate"
+
+checkpoint:
+  save_dir: "outputs/checkpoints/gan"
+  save_best_metric: "val_anomaly_auc"
+  mode: "max"
+
+seed: 42

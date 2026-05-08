@@ -1,0 +1,45 @@
+# FastAPI serving settings
+#s
+api:
+  app_name: "DL Project RSNA Pneumonia API"
+  version: "1.0.0"
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: false
+
+inference:
+  image_size: 512
+  device: "auto"
+  classifier_checkpoint: "outputs/checkpoints/classifier/best_resnet50.pt"
+  gan_checkpoint: "outputs/checkpoints/gan/best_generator.pt"
+  fusion_config: "configs/fusion/risk_fusion.yaml"
+  gradcam_config: "configs/xai/gradcam.yaml"
+  class_names:
+    0: "normal"
+    1: "pneumonia"
+
+preprocessing:
+  grayscale: true
+  clahe: true
+  resize: 512
+  normalize_mean: [0.485]
+  normalize_std: [0.229]
+
+outputs:
+  save_uploaded_images: true
+  save_processed_images: true
+  save_gradcam_overlay: true
+  save_anomaly_map: true
+  save_json_report: true
+  output_dir: "outputs/api_outputs"
+
+security:
+  enable_cors: true
+  allowed_origins:
+    - "*"
+  max_upload_size_mb: 20
+
+runtime:
+  request_timeout_sec: 120
+  keep_temp_files: false

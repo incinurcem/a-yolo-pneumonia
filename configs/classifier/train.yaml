@@ -1,0 +1,95 @@
+# Batch size, epochs, optimizer, scheduler for classifier
+#s
+task:
+  name: "rsna_pneumonia_classification"
+  mode: "binary_classification"
+  target_column: "label"
+  positive_class_name: "pneumonia"
+  negative_class_name: "normal"
+
+data:
+  image_size: 512
+  channels: 1
+  normalize:
+    mean: [0.485]
+    std: [0.229]
+  train_csv: "data/splits/classification_train.csv"
+  val_csv: "data/splits/classification_val.csv"
+  test_csv: "data/splits/classification_test.csv"
+  image_root: "data/images_png"
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+
+augmentations:
+  train:
+    horizontal_flip: 0.50
+    shift_scale_rotate: 0.50
+    shift_limit: 0.05
+    scale_limit: 0.10
+    rotate_limit: 10
+    random_brightness_contrast: 0.40
+    clahe: 0.30
+    gaussian_blur: 0.15
+    coarse_dropout: 0.20
+  valid:
+    enabled: false
+  test:
+    enabled: false
+
+loader:
+  batch_size: 32
+  drop_last: true
+  weighted_sampler: true
+
+optimization:
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  epochs: 40
+  gradient_clip_norm: 1.0
+  amp: true
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 3
+  min_lr: 0.000001
+
+loss:
+  name: "bce_with_logits"
+  pos_weight: 1.0
+  focal:
+    enabled: false
+    gamma: 2.0
+    alpha: 0.25
+
+metrics:
+  monitor: "val_auc"
+  mode: "max"
+  threshold: 0.50
+  compute:
+    - "auc"
+    - "accuracy"
+    - "f1"
+    - "precision"
+    - "recall"
+    - "specificity"
+    - "sensitivity"
+    - "pr_auc"
+    - "ece"
+
+checkpoint:
+  save_dir: "outputs/checkpoints/classifier"
+  save_best_only: true
+  early_stopping_patience: 8
+
+logging:
+  log_interval: 20
+  save_train_curves: true
+  save_confusion_matrix: true
+  save_roc_curve: true
+  save_pr_curve: true
+  save_predictions_csv: true
+
+seed: 42
+deterministic: false

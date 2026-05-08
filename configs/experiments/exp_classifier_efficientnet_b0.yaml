@@ -1,0 +1,44 @@
+# Experiment: lightweight classifier using EfficientNet-B0
+#s
+experiment:
+  name: "classifier_efficientnet_b0"
+  type: "classification"
+  description: "EfficientNet-B0 backbone ile RSNA pneumonia binary classification"
+
+inherit:
+  - "configs/base.yaml"
+  - "configs/data.yaml"
+  - "configs/paths.yaml"
+  - "configs/classifier/train.yaml"
+  - "configs/classifier/backbones.yaml"
+
+model:
+  backbone_key: "efficientnet_b0"
+  num_classes: 2
+  dropout: 0.30
+
+training:
+  batch_size: 32
+  epochs: 35
+  lr: 0.0003
+  weight_decay: 0.0001
+  optimizer: "adamw"
+  amp: true
+
+scheduler:
+  name: "cosine"
+  warmup_epochs: 2
+  min_lr: 0.000001
+
+loss:
+  name: "bce_with_logits"
+  label_smoothing: 0.02
+
+evaluation:
+  threshold: 0.50
+  tta: false
+
+output:
+  run_name: "exp_classifier_efficientnet_b0"
+  checkpoint_dir: "outputs/checkpoints/classifier/efficientnet_b0"
+  prediction_dir: "outputs/predictions/classifier/efficientnet_b0"

@@ -1,0 +1,38 @@
+# Streamlit UI settings
+#s
+streamlit:
+  app_title: "RSNA Pneumonia Deep Learning Demo"
+  page_title: "Pneumonia Risk Analysis"
+  page_icon: "🫁"
+  layout: "wide"
+  initial_sidebar_state: "expanded"
+
+model:
+  classifier_checkpoint: "outputs/checkpoints/classifier/best_resnet50.pt"
+  gan_checkpoint: "outputs/checkpoints/gan/best_generator.pt"
+  fusion_config: "configs/fusion/risk_fusion.yaml"
+  gradcam_config: "configs/xai/gradcam.yaml"
+  device: "auto"
+
+ui:
+  show_probability_bar: true
+  show_gradcam: true
+  show_gan_heatmap: true
+  show_fused_risk_map: true
+  show_thresholds: true
+  show_json_summary: true
+  show_download_buttons: true
+
+preprocessing:
+  grayscale: true
+  clahe: true
+  resize: 512
+
+outputs:
+  session_output_dir: "outputs/streamlit_outputs"
+  save_user_runs: true
+
+demo_defaults:
+  fusion_alpha: 0.60
+  classification_threshold: 0.50
+  anomaly_threshold: 0.35

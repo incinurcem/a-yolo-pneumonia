@@ -1,0 +1,24 @@
+#s
+paths:
+  root: "."
+  data: "data"
+  configs: "configs"
+  docs: "docs"
+  deployment: "deployment"
+  outputs: "outputs"
+
+  checkpoints: "outputs/checkpoints"
+  logs: "outputs/logs"
+  metrics: "outputs/metrics"
+  predictions: "outputs/predictions"
+  visuals: "outputs/visualizations"
+  reports: "reports"
+  xai: "outputs/visualizations/gradcam"
+  api_outputs: "outputs/api"
+  streamlit_outputs: "outputs/streamlit"
+
+files:
+  classifier_best_ckpt: "outputs/checkpoints/classifier/best_resnet50.pt"
+  gan_best_generator: "outputs/checkpoints/gan/best_generator.pt"
+  gan_best_discriminator: "outputs/checkpoints/gan/best_discriminator.pt"
+  fusion_best_yaml: "outputs/experiments/fusion_alpha_search/best_fusion.yaml"

@@ -1,0 +1,50 @@
+project:
+  name: cxr_vision_stack
+  seed: 42
+
+paths:
+  train_png_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/processed_pre/train/images_png"
+  test_png_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/processed_pre/test/images_png"
+
+  merged_metadata_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/csv/merged_master_with_split.csv"
+  qc_features_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/csv/qc_features.csv"
+
+  seg_train_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/segmentation/lung_seg_train.csv"
+  seg_val_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/segmentation/lung_seg_val.csv"
+  seg_mask_root: "/content/drive/MyDrive/Spring Semester/medical image analysis project/data/segmentation/masks"
+
+  mask_output_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/masks"
+  roi_output_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/rois"
+
+  roi_metadata_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/tables/roi_metadata.csv"
+  roi_qc_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/tables/roi_qc_features.csv"
+  bbox_features_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/tables/bbox_features.csv"
+  condition_master_csv: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/tables/condition_features_master.csv"
+
+  plain_ckpt_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/checkpoints/plain"
+  cond_ckpt_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/checkpoints/conditional"
+  pred_dir: "/content/drive/MyDrive/Spring Semester/medical image analysis project/outputs/predictions"
+
+segmentation:
+  image_size: 512
+  batch_size: 8
+  epochs: 30
+  lr: 0.0003
+  num_workers: 4
+  threshold: 0.5
+
+roi:
+  crop_margin: 12
+  min_area_ratio: 0.02
+  output_size: 384
+
+classification:
+  image_size: 384
+  batch_size: 16
+  epochs: 15
+  lr: 0.0001
+  num_workers: 4
+  num_classes: 2
+
+conditional:
+  feature_dim: 16
